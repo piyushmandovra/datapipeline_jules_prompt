@@ -1,0 +1,85 @@
+{
+  "_comment_main": "Main configuration for the data processing pipeline orchestrated by Airflow.",
+  "general": {
+    "pipeline_name": "DataProcessingPipeline_v2_Configured",
+    "environment": "development",
+    "_comment_fernet_key": "The Fernet key for data decryption should be stored as an Airflow Variable for security." ,
+    "fernet_key_airflow_variable_name": "pipeline_framework_fernet_key"
+  },
+  "airflow_databricks_config": {
+    "_comment": "Configuration for Airflow's Databricks connection and job submission.",
+    "databricks_conn_id": "databricks_default",
+    "databricks_job_cluster_key": "YOUR_DATABRICKS_JOB_CLUSTER_KEY_OR_LEAVE_FOR_NEW_CLUSTER",
+    "_new_cluster_comment": "Define 'new_cluster' settings here if not using a job_cluster_key. Example below.",
+    "new_cluster_example_comment_out": {
+        "spark_version": "13.3.x-scala2.12",
+        "node_type_id": "i3.xlarge",
+        "num_workers": 2
+    },
+    "databricks_notebook_path": "/Shared/PipelineFramework/GenericPySparkRunner",
+    "_notebook_path_comment": "Optional: Path to a generic notebook runner if submitting scripts as notebook parameters. Alternatively, scripts can be submitted directly if the operator supports it (e.g., for SparkPythonOperator)."
+  },
+  "data_staging_config": {
+    "_comment": "Configuration for the initial staging area for decrypted data, before Autoloader processing.",
+    "staging_area_path_template": "s3://YOUR_BUCKET_NAME/pipeline_staging/{pipeline_name}/run_{{ dag_run.id }}/",
+    "_staging_area_path_comment": "This path will be used to upload decrypted data. The Autoloader will then pick up from a sub-path of this location."
+  },
+  "autoloader_job_params": {
+    "_comment": "Parameters for generating the Databricks Autoloader PySpark script.",
+    "spark_app_name": "Autoloader_Job_for_{{ dag_run.id }}",
+    "input_path_suffix": "decrypted_data_for_autoloader/",
+    "_input_path_suffix_comment": "This suffix is appended to 'data_staging_config.staging_area_path_template' to form the actual input for Autoloader.",
+    "input_format": "json",
+    "file_format_options": {
+      "multiline": "true",
+      "_comment_schema": "Consider setting inferSchema to false and relying on schema evolution for robustness."
+    },
+    "output_delta_table_name": "YOUR_DATABASE.bronze_data_raw",
+    "schema_location_root": "s3://YOUR_BUCKET_NAME/databricks_pipeline_metadata/schemas/",
+    "_schema_comment": "The actual schema location will be schema_location_root + output_delta_table_name.",
+    "checkpoint_location_root": "s3://YOUR_BUCKET_NAME/databricks_pipeline_metadata/checkpoints/",
+    "_checkpoint_comment": "The actual checkpoint location will be checkpoint_location_root + output_delta_table_name.",
+    "trigger_type": "availableNow",
+    "output_mode": "append",
+    "extra_spark_configs": {
+      "spark.databricks.delta.schema.autoMerge.enabled": "true",
+      "spark.databricks.delta.optimizeWrite.enabled": "true"
+    }
+  },
+  "deduplication_job_params": {
+    "_comment": "Parameters for the deduplication job, which could be a MERGE INTO operation or another Spark job.",
+    "strategy": "merge_into",
+    "spark_app_name": "Deduplication_Job_for_{{ dag_run.id }}",
+    "extra_spark_configs": {
+      "spark.databricks.delta.properties.defaults.autoOptimize.optimizeWrite": "true",
+      "spark.databricks.delta.properties.defaults.autoOptimize.autoCompact": "true"
+    },
+    "_drop_duplicates_strategy_comment": "Parameters below are for 'drop_duplicates' if it were run as a separate job on a table.",
+    "drop_duplicates_config_example_comment_out": {
+        "source_table_name": "YOUR_DATABASE.bronze_data_raw",
+        "target_table_name": "YOUR_DATABASE.bronze_data_deduplicated_simple",
+        "deduplication_keys": ["id", "event_timestamp"],
+        "watermark_column": "event_timestamp",
+        "watermark_delay_threshold": "10 minutes"
+    },
+    "_merge_into_strategy_comment": "Parameters below are for 'merge_into'.",
+    "merge_into_config": {
+        "source_table_name": "YOUR_DATABASE.bronze_data_raw",
+        "_source_table_comment": "This is typically the output of the Autoloader job.",
+        "target_table_name": "YOUR_DATABASE.silver_data_deduplicated",
+        "deduplication_keys": ["primary_key_column_1", "primary_key_column_2"],
+        "merge_condition_extras": "AND source.is_latest_record = true",
+        "when_matched_update_clause": "SET target.columnA = source.columnA, target.updated_at_ts = current_timestamp()",
+        "when_not_matched_insert_clause": "INSERT (primary_key_column_1, primary_key_column_2, columnA, created_at_ts, updated_at_ts) VALUES (source.primary_key_column_1, source.primary_key_column_2, source.columnA, current_timestamp(), current_timestamp())",
+        "when_not_matched_by_source_delete_clause": "NONE",
+        "_delete_comment": "Example: 'DELETE' or 'NONE'. Use with caution.",
+        "when_not_matched_by_source_update_clause": "NONE"
+        "_update_comment": "Example: 'SET target.is_active = false' or 'NONE'."
+    }
+  },
+  "example_custom_airflow_params": {
+    "_comment": "Example of how other custom parameters might be stored for use in Airflow tasks.",
+    "my_custom_param_from_config": "hello_from_config_file",
+    "my_custom_param_airflow_variable_name": "my_pipeline_custom_airflow_variable"
+  }
+}

@@ -26,9 +26,19 @@ if not logger.handlers: # Avoid adding multiple handlers if already configured
 
 def _validate_params(params: dict, required_keys: list[str]):
     """Helper function to validate required keys in a dictionary."""
-    missing_keys = [key for key in required_keys if key not in params or not params[key]]
+    missing_keys = []
+    for key in required_keys:
+        if key not in params:
+            missing_keys.append(key)
+        elif not params[key]:  # Covers None, empty string, empty list, etc.
+            missing_keys.append(key)
+        elif key == 'deduplication_keys' and isinstance(params[key], list) and len(params[key]) == 0:
+            missing_keys.append(f"{key} (cannot be empty list)")
+        elif isinstance(params[key], str) and params[key].strip() == "":
+            missing_keys.append(f"{key} (cannot be empty string)")
+    
     if missing_keys:
-        err_msg = f"Missing or empty required parameters: {missing_keys}."
+        err_msg = f"Missing or invalid required parameters: {missing_keys}."
         logger.error(err_msg)
         raise ValueError(err_msg)
 
@@ -95,9 +105,6 @@ def generate_spark_deduplication_code(params: dict) -> str:
         
         target_table = params['target_table_name']
         source_view = params['source_view_name']
-        
-        if not params['deduplication_keys']: # Ensure it's not an empty list
-             raise ValueError("'deduplication_keys' cannot be empty for 'merge_into' strategy.")
         merge_on_conditions = " AND ".join([f"target.{key} = source.{key}" for key in params['deduplication_keys']])
         if params.get('merge_condition_extras'):
             merge_on_conditions += f" {params['merge_condition_extras']}"
@@ -182,10 +189,11 @@ def generate_merge_into_script(params: dict) -> str:
     merge_sql = generate_spark_deduplication_code(sql_gen_params)
 
     spark_app_name = params.get('spark_app_name', 'MergeInto_Pipeline_Script')
-    extra_spark_configs_str = ""
+    extra_spark_configs_parts = []
     if 'extra_spark_configs' in params and isinstance(params['extra_spark_configs'], dict):
         for k, v in params['extra_spark_configs'].items():
-            extra_spark_configs_str += f"    spark.conf.set(\"{k}\", \"{str(v)}\")\n"
+            extra_spark_configs_parts.append(f"    spark.conf.set(\"{k}\", \"{str(v)}\")\n")
+    extra_spark_configs_str = "".join(extra_spark_configs_parts)
 
     pyspark_script = f"""\"\"\"
 Generated PySpark script for MERGE INTO operation.

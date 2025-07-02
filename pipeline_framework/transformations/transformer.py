@@ -54,12 +54,29 @@ class Transformer:
             if not isinstance(expression, str):
                 logging.error("'expression' in _add_column must be a string.")
                 raise ValueError("'expression' in _add_column must be a string.")
+            
+            # Security: Validate expression contains only safe operations
+            import re
+            import ast
+            
+            # Allow only safe mathematical operations and column references
+            safe_pattern = r'^[\w\s\+\-\*\/\(\)\[\]\'\"\.]+$'
+            if not re.match(safe_pattern, expression):
+                logging.error(f"Expression contains potentially unsafe characters: {expression}")
+                raise ValueError(f"Expression contains potentially unsafe characters. Only alphanumeric, mathematical operators, brackets, and quotes are allowed.")
+            
+            # Additional validation: check for dangerous keywords
+            dangerous_keywords = ['import', 'exec', 'eval', '__', 'open', 'file', 'input', 'raw_input', 'compile']
+            if any(keyword in expression.lower() for keyword in dangerous_keywords):
+                logging.error(f"Expression contains dangerous keywords: {expression}")
+                raise ValueError(f"Expression contains dangerous keywords and is not allowed.")
+            
             try:
-                # WARNING: Using eval can be dangerous with untrusted input.
-                # In a production system, consider safer alternatives like numexpr or ast.literal_eval
-                # for simple expressions, or a more controlled DSL.
-                df[column_name] = pd.eval(expression, engine='python', local_dict={'df': df})
-                logging.info(f"Applying add_column '{column_name}' using expression: {expression}")
+                # Use pandas eval with restricted namespace for safety
+                allowed_names = {'df': df}
+                df[column_name] = pd.eval(expression, engine='python', local_dict=allowed_names, 
+                                        global_dict={}, resolvers=[])
+                logging.info(f"Applying add_column '{column_name}' using validated expression: {expression}")
             except Exception as e:
                 logging.error(f"Error evaluating expression for new column '{column_name}': {e}")
                 raise ValueError(f"Error evaluating expression for new column '{column_name}': {e}")

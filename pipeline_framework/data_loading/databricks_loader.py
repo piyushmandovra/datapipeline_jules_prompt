@@ -78,10 +78,11 @@ def generate_autoloader_script(params: dict) -> str:
             raise ValueError(err_msg)
 
     # Build file_format_options string
-    file_format_options_str = ""
+    file_format_options_parts = []
     if 'file_format_options' in params and isinstance(params['file_format_options'], dict):
         for k, v in params['file_format_options'].items():
-            file_format_options_str += f".option(\"{k}\", \"{str(v)}\")" # Ensure value is stringified
+            file_format_options_parts.append(f".option(\"{k}\", \"{str(v)}\")")  # Ensure value is stringified
+    file_format_options_str = "".join(file_format_options_parts)
 
     # Build table_properties string
     table_properties_str = ""
@@ -116,10 +117,11 @@ def generate_autoloader_script(params: dict) -> str:
     spark_app_name = params.get('spark_app_name', 'Autoloader_Pipeline')
 
     # Build extra_spark_configs string
-    extra_spark_configs_str = ""
+    extra_spark_configs_parts = []
     if 'extra_spark_configs' in params and isinstance(params['extra_spark_configs'], dict):
         for k, v in params['extra_spark_configs'].items():
-            extra_spark_configs_str += f"    spark.conf.set(\"{k}\", \"{str(v)}\")\n"
+            extra_spark_configs_parts.append(f"    spark.conf.set(\"{k}\", \"{str(v)}\")\n")
+    extra_spark_configs_str = "".join(extra_spark_configs_parts)
 
 
     # Using an f-string for the PySpark script template
